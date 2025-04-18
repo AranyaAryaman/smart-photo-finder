@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Smart Photo Album</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 30px;
+      background-color: #f5f7fa;
+    }
+    h1, h2 {
+      color: #333;
+    }
+    .section {
+      margin-bottom: 40px;
+    }
+    input[type="text"], input[type="file"] {
+      padding: 10px;
+      margin: 10px 0;
+      width: 300px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    button {
+      padding: 10px 20px;
+      margin-left: 5px;
+      border: none;
+      border-radius: 5px;
+      background-color: #4CAF50;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    #gallery, #lastUploaded {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+    .photo-card {
+      background: white;
+      padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      text-align: center;
+      width: 320px;
+    }
+    .photo-card img {
+      width: 100%;
+      height: auto;
+      border-radius: 5px;
+    }
+    .labels {
+      margin-top: 10px;
+      color: #666;
+      font-size: 14px;
+    }
+    .no-results {
+      font-style: italic;
+      color: #777;
+    }
+    /* Spinner */
+    #loadingSpinner {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 9999;
+    }
+    .spinner {
+      border: 8px solid #f3f3f3;
+      border-top: 8px solid #4CAF50;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="section">
+    <h1>Search Photos</h1>
+    <input type="text" id="searchQuery" placeholder="Search for...">
+    <button onclick="searchPhotos()">Search</button>
+  </div>
+
+  <div class="section">
+    <h1>Upload Photo</h1>
+    <input type="file" id="photoUpload">
+    <input type="text" id="customLabels" placeholder="Custom labels, comma separated">
+    <button onclick="uploadPhoto()">Upload</button>
+  </div>
+
+  <div class="section">
+    <h2>Last Uploaded Photo</h2>
+    <div id="lastUploaded"></div>
+  </div>
+
+  <div class="section">
+    <h2>Search Gallery</h2>
+    <div id="gallery"></div>
+  </div>
+
+  <!-- Spinner -->
+  <div id="loadingSpinner">
+    <div class="spinner"></div>
+  </div>
+
+  <script>
+    const API_BASE = "https://jtz1k6f4bk.execute-api.us-east-1.amazonaws.com/prod";  
+    const BUCKET_URL = "https://aranya-photo-storage-bucket.s3.amazonaws.com";
+
+    function showSpinner() {
+      document.getElementById('loadingSpinner').style.display = 'block';
+    }
+
+    function hideSpinner() {
+      document.getElementById('loadingSpinner').style.display = 'none';
+    }
+
+    async function searchPhotos() {
+      const query = document.getElementById('searchQuery').value;
+      
+      if (!query.trim()) {
+        alert('Please enter a search term!');
+        return;
+      }
+
+      showSpinner();
+
+      try {
+        const response = await fetch(`${API_BASE}/search?q=${query}`);
+        const photoKeys = await response.json();
+
+        const gallery = document.getElementById('gallery');
+        gallery.innerHTML = "";  // Clear previous results
+
+        if (photoKeys.length === 0) {
+          gallery.innerHTML = "<p class='no-results'>No photos found for the search query.</p>";
+        } else {
+          photoKeys.forEach(key => {
+            const container = createPhotoCard(`${BUCKET_URL}/${key}`, key, []);
+            gallery.appendChild(container);
+          });
+        }
+      } catch (error) {
+        console.error('Search failed:', error);
+        alert('An error occurred while searching.');
+      } finally {
+        hideSpinner();
+      }
+    }
+
+    async function uploadPhoto() {
+      const fileInput = document.getElementById('photoUpload');
+      const file = fileInput.files[0];
+      const labelsInput = document.getElementById('customLabels').value;
+
+      if (!file) {
+        alert('Please select a file first!');
+        return;
+      }
+
+      showSpinner();
+
+      try {
+        // Step 1: Get presigned URL
+        const presignResponse = await fetch(`${API_BASE}/generate-upload-url?filename=${file.name}&customLabels=${encodeURIComponent(labelsInput)}`);
+        const presignData = await presignResponse.json();
+        const uploadURL = presignData.uploadURL;
+
+        // Step 2: Upload to S3
+        await fetch(uploadURL, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'image/jpeg',
+            'x-amz-meta-customlabels': labelsInput
+          },
+          body: file
+        });
+
+        alert('Upload successful!');
+        fileInput.value = "";
+        document.getElementById('customLabels').value = "";
+
+        const lastUploaded = document.getElementById('lastUploaded');
+        lastUploaded.innerHTML = "";
+
+        const labels = labelsInput.split(',').map(label => label.trim()).filter(label => label);
+        const container = createPhotoCard(`${BUCKET_URL}/${file.name}`, file.name, labels);
+        lastUploaded.appendChild(container);
+      } catch (error) {
+        console.error('Upload failed:', error);
+        alert('An error occurred during upload.');
+      } finally {
+        hideSpinner();
+      }
+    }
+
+    function createPhotoCard(imgSrc, altText, labels) {
+      const container = document.createElement('div');
+      container.className = 'photo-card';
+
+      const img = document.createElement('img');
+      img.src = imgSrc;
+      img.alt = altText;
+
+      const labelText = document.createElement('div');
+      labelText.className = 'labels';
+      if (labels.length > 0) {
+        labelText.innerText = `Labels: ${labels.join(', ')}`;
+      } else {
+        labelText.innerText = '';
+      }
+
+      container.appendChild(img);
+      container.appendChild(labelText);
+      return container;
+    }
+  </script>
+
+</body>
+</html>

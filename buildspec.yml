@@ -1,0 +1,21 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.9
+  build:
+    commands:
+      - echo "Zipping Lambda functions..."
+      - zip -r index-photos.zip index-photos/
+      - zip -r search-photos.zip search-photos/
+      - zip -r generate-upload-url.zip generate-upload-url/
+      - echo "Updating Lambda functions..."
+      - aws lambda update-function-code --function-name index-photos --zip-file fileb://index-photos.zip
+      - aws lambda update-function-code --function-name search-photos --zip-file fileb://search-photos.zip
+      - aws lambda update-function-code --function-name generate-upload-url --zip-file fileb://generate-upload-url.zip
+artifacts:
+  files:
+    - index-photos.zip
+    - search-photos.zip
+    - generate-upload-url.zip
