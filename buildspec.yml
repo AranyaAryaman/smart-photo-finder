@@ -1,14 +1,21 @@
 version: 0.2
 
 phases:
+  install:
+    commands:
+      - echo Installing dependencies...
+      - pip install -r index-photos/requirements.txt -t index-photos/
+      - pip install -r search-photos/requirements.txt -t search-photos/
+      - pip install -r generate-upload-url/requirements.txt -t generate-upload-url/
+
   build:
     commands:
-      - echo "Zipping Lambda functions..."
+      - echo Zipping Lambda functions...
       - cd index-photos && zip -r ../index-photos.zip . && cd ..
       - cd search-photos && zip -r ../search-photos.zip . && cd ..
       - cd generate-upload-url && zip -r ../generate-upload-url.zip . && cd ..
 
-      - echo "Updating Lambda functions..."
+      - echo Updating Lambda functions...
       - aws lambda update-function-code --function-name index-photos --zip-file fileb://index-photos.zip
       - aws lambda update-function-code --function-name search-photos --zip-file fileb://search-photos.zip
       - aws lambda update-function-code --function-name generate-upload-url --zip-file fileb://generate-upload-url.zip
